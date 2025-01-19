@@ -14,6 +14,8 @@ DWORD WINAPI connection_handler(LPVOID lpParam);
 DWORD WINAPI receive_message_thread(LPVOID lpParam);
 
 /////////////////////////////////////////// MULTIPLE CLIENTS DOESNT WORK ANYMORE ///////////////////////////////////
+////////////// PROBALBY because it tries to receive AND accept at the same time which is not possible
+
 typedef struct {
     int mode; // 0 for run Client, 1 for run Server
     SOCKET* connector_list; // ignored for Client
@@ -26,6 +28,7 @@ typedef struct {
     int mode; // 0 for Client receiver, 1 for Server recevier
     SOCKET s;
     int connector_id; // ignored when used for client_receiver
+
 } receive_message_Params;
 
 int main(int argc, char *argv[]) {   
@@ -135,6 +138,8 @@ void client(int* stop_flag, int* initialized) {
 void server(SOCKET *connector_list, int* stop_flag, int* server_initialized, int* connectedAmount) {
     SOCKET s = INVALID_SOCKET;
     int connectors = 0;
+    HANDLE connector_threads[MAX_CONNECTORS];
+    receive_message_Params parameters[MAX_CONNECTORS];
     printf("you started a server\n");
     if ((s = socket(AF_INET , SOCK_STREAM, 0)) == INVALID_SOCKET) {
         printf("Could not create socket : %d", WSAGetLastError());
@@ -171,10 +176,12 @@ void server(SOCKET *connector_list, int* stop_flag, int* server_initialized, int
             *connectedAmount = *connectedAmount + 1;
             //start receiver for this client
             receive_message_Params params = {1,client, *connectedAmount};
-            HANDLE hObject = CreateThread(NULL,0,receive_message_thread, &params, 0, NULL);
-            //should store the handle ... 
+            parameters[*connectedAmount-1] = params;
+            HANDLE hObject = CreateThread(NULL,0,receive_message_thread, &parameters[*connectedAmount-1], 0, NULL);
+            connector_threads[*connectedAmount-1] = hObject;
+            
         }
-        char msg[] = "HELLO FELLOW SOCKET";
+        char msg[] = "HELLO FROM SERVER";
         send(client, &msg[0], sizeof(msg) / sizeof(msg[0]), 0);
     }
     while (*stop_flag == 0) {
@@ -202,7 +209,7 @@ DWORD WINAPI receive_message_thread(LPVOID lpParam) {
     char recvbuf[512];
     int res;
     do {
-        res = recv(params->s, recvbuf, 512,0);
+        res = recvfrom(params->s, recvbuf, 512,0, NULL, NULL);
         if (res > 0) {
             if (params->mode == 0 ){
                 printf("Received : %.*s\n",res, recvbuf);
