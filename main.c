@@ -83,6 +83,7 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
+        TerminateThread(hThread, 100);
         //server.accept() blocks the thread...
         //WaitForSingleObject(hThread, INFINITE);
     } else {                                //CLIENT MODE
@@ -117,24 +118,23 @@ int main(int argc, char *argv[]) {
 void client(int* stop_flag, int* initialized) {
     SOCKET s = INVALID_SOCKET;
     printf("you started a client\n");
-    if ((s = socket(AF_INET , SOCK_STREAM, 0)) == INVALID_SOCKET) {
-        printf("Could not create socket : %d", WSAGetLastError());
-        return;
-    }
+    
+    ASSERT(!((s = socket(AF_INET , SOCK_STREAM, 0))  == INVALID_SOCKET), 
+            "Could not create socket :%d", WSAGetLastError());
 
     struct sockaddr_in service;
     service.sin_family = AF_INET;
     service.sin_addr.s_addr = inet_addr("192.168.1.245");
     service.sin_port = htons(8008);
 
-    if (connect(s, (SOCKADDR *) &service, sizeof(service)) == SOCKET_ERROR) {
-        printf("Could not connect to server : %d", WSAGetLastError());
-        return;
-    }
+    ASSERT(!(connect(s, (SOCKADDR *) &service, sizeof(service))), 
+                "Could not connect to server : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s) );
+    
     *initialized = 1;
     // start receive thread here
     receive_message_Params params = {0,s,0};
     HANDLE hObject = CreateThread(NULL,0,receive_message_thread, &params, 0, NULL);
+    ASSERT(hObject, "Coulnt initialize Receiver : %d", GetLastError());  // NEED close socket ??  
     printf("Write and press enter to send message to Server");
     do {
         char buf[MAX_MESSAGE_SIZE];
@@ -144,11 +144,7 @@ void client(int* stop_flag, int* initialized) {
         }
     } while ( *stop_flag == 0);
 
-    if (closesocket(s) == SOCKET_ERROR) {
-        wprintf(L"closesocket function failed with error %d\n", WSAGetLastError());
-        WSACleanup();
-        return;
-    }
+    printf("close socket gave: %d", CLOSE_SOCK(s));
 }
 
 void server(SOCKET *connector_list, int* stop_flag, int* server_initialized, int* connectedAmount) {
@@ -157,45 +153,40 @@ void server(SOCKET *connector_list, int* stop_flag, int* server_initialized, int
     HANDLE connector_threads[MAX_CONNECTORS];
     receive_message_Params parameters[MAX_CONNECTORS];
     printf("you started a server\n");
-    ASSERT(!((s = socket(AF_INET , SOCK_STREAM, 0))  == INVALID_SOCKET), "COuld not create socket :%d", WSAGetLastError());
+    ASSERT(!((s = socket(AF_INET , SOCK_STREAM, 0))  == INVALID_SOCKET), 
+            "Could not create socket :%d", WSAGetLastError());
     struct sockaddr_in service;
     service.sin_family = AF_INET;
     service.sin_addr.s_addr = inet_addr("192.168.1.245");
     service.sin_port = htons(8008);
     // BIND SOCKET AND SET TO LISTEN MODE
-    ASSERT(!(bind(s, (SOCKADDR *) &service, sizeof(service))), "Could not bind socket : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
-    ASSERT(!(listen(s, SOMAXCONN)), "Could not listen to incoming connections : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
+    ASSERT(!(bind(s, (SOCKADDR *) &service, sizeof(service))), 
+            "Could not bind socket : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
+    ASSERT(!(listen(s, SOMAXCONN)), 
+            "Could not listen to incoming connections : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
     *server_initialized = 1;
     while (connectors < MAX_CONNECTORS && *stop_flag == 0 ) {
         SOCKET client = INVALID_SOCKET;
-        client = accept(s, NULL, NULL);
-        if (client == INVALID_SOCKET) {
-            printf("Couldnt accept connection : %d", WSAGetLastError());
-            closesocket(s);
-            return;
-        } else {
-            printf("Client Connected");
-            *(connector_list + connectors) = client;
-            connectors++;
-            *connectedAmount = *connectedAmount + 1;
-            //start receiver for this client
-            receive_message_Params params = {1,client, *connectedAmount};
-            parameters[*connectedAmount-1] = params;
-            HANDLE hObject = CreateThread(NULL,0,receive_message_thread, &parameters[*connectedAmount-1], 0, NULL);
-            connector_threads[*connectedAmount-1] = hObject;
-            
-        }
+        ASSERT((client = accept(s, NULL, NULL)) != INVALID_SOCKET, 
+                "Could not accept connection : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
+        
+        printf("Client Connected");
+        *(connector_list + connectors) = client;
+        connectors++;
+        *connectedAmount = *connectedAmount + 1;
+        //start receiver for this client
+        receive_message_Params params = {1,client, *connectedAmount};
+        parameters[*connectedAmount-1] = params;
+        HANDLE hObject = CreateThread(NULL,0,receive_message_thread, &parameters[*connectedAmount-1], 0, NULL);
+        ASSERT(hObject, "Coulnt initialize Receiver : %d", GetLastError()); // need close socket ??   
+        connector_threads[*connectedAmount-1] = hObject;
         char msg[] = "HELLO FROM SERVER";
         send(client, &msg[0], sizeof(msg) / sizeof(msg[0]), 0);
     }
     while (*stop_flag == 0) {
         continue;
     }
-    if (closesocket(s) == SOCKET_ERROR) {
-        wprintf(L"closesocket function failed with error %d\n", WSAGetLastError());
-        WSACleanup();
-        return;
-    }
+    printf("close socket gave: %d", CLOSE_SOCK(s));
 }
 
 DWORD WINAPI connection_handler(LPVOID lpParam) {
