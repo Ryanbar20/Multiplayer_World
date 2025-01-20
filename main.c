@@ -2,19 +2,36 @@
 #include <stdio.h>
 #include <windows.h>
 #include <time.h>
-// gcc .\implementation.c -o .\implementation -lws2_32
+#define SDL_MAIN_HANDLED
+#include "SDL2/SDL.h"
+// gcc -o myprogram.exe main.c -lSDL2main -lSDL2 -lws2_32
 #pragma comment(lib, "Ws2_32.lib")
 
-#define MAX_CONNECTORS 10
 
+
+#define ASSERT(_e, ...) if (!(_e)) { fprintf(stderr, __VA_ARGS__); exit(1); }
+#define CLOSE_SOCK(s) ((closesocket(s) == 0) ? 0 : WSAGetLastError())
+#define MAX_CONNECTORS 10
+#define MAX_MESSAGE_SIZE 512
+/*
+                TODO:
+        max msg size
+        server should send message:
+            x,y p1 ; x,y p2 ; x,y p3
+        client should parse that and update positions of all clients in their game
+        client should send message:
+            x,y
+        server should parse that and update the position it knows from that client
+        CLient displays
+
+
+
+*/
 
 void client(int* stop_flag, int* initialized);
 void server(SOCKET *connector_list, int* stop_flag, int* initialized, int* connectedAmount);
 DWORD WINAPI connection_handler(LPVOID lpParam);
 DWORD WINAPI receive_message_thread(LPVOID lpParam);
-
-/////////////////////////////////////////// MULTIPLE CLIENTS DOESNT WORK ANYMORE ///////////////////////////////////
-////////////// PROBALBY because it tries to receive AND accept at the same time which is not possible
 
 typedef struct {
     int mode; // 0 for run Client, 1 for run Server
@@ -23,7 +40,6 @@ typedef struct {
     int* initialized; //1 if server/client is done with initializing
     int* connected; //ignored for client
 } connectionThreadParams;
-
 typedef struct {
     int mode; // 0 for Client receiver, 1 for Server recevier
     SOCKET s;
@@ -33,13 +49,10 @@ typedef struct {
 
 int main(int argc, char *argv[]) {   
     WSADATA wsaData;
+    ASSERT(!SDL_Init( SDL_INIT_EVERYTHING ), "Could not initialize SDL : %s", SDL_GetError());
     printf("\nInitialising Winsock...\n");
-    if (WSAStartup(MAKEWORD(2,2),&wsaData) != 0) {
-        printf("Failed. Error Code : %d",WSAGetLastError());
-        return 1;
-    }
-    if (argc > 1 && argv[1][0] == 's') {
-        //SERVER MODE
+    ASSERT(!WSAStartup(MAKEWORD(2,2), &wsaData), "Failed. Error Code : %d",WSAGetLastError());
+    if (argc > 1 && argv[1][0] == 's') {    // SERVER MODE
         SOCKET connectors[MAX_CONNECTORS];
         int stop_flag = 0;
         int server_initialized = 0;
@@ -51,6 +64,7 @@ int main(int argc, char *argv[]) {
             &params,
             0, NULL
         );
+        ASSERT(hThread, "Coulnt initialize Server : %d", GetLastError());
         char input[100];
         while(server_initialized == 0) {;}
         while (stop_flag == 0) {
@@ -71,8 +85,7 @@ int main(int argc, char *argv[]) {
         }
         //server.accept() blocks the thread...
         //WaitForSingleObject(hThread, INFINITE);
-    } else {
-        //CLIENT MODE
+    } else {                                //CLIENT MODE
         int client_initialized = 0;
         int stop_flag = 0;
         connectionThreadParams params = {0,NULL, &stop_flag, &client_initialized, NULL};
@@ -82,6 +95,7 @@ int main(int argc, char *argv[]) {
             &params,
             0, NULL
         );
+        ASSERT(hThread, "Coulnt initialize Client : %d", GetLastError());
         char input[100];
         while (client_initialized ==0) {;}
         while (stop_flag == 0) {
@@ -97,6 +111,7 @@ int main(int argc, char *argv[]) {
     }
     
     WSACleanup();
+    SDL_Quit();
 }
 
 void client(int* stop_flag, int* initialized) {
@@ -122,8 +137,8 @@ void client(int* stop_flag, int* initialized) {
     HANDLE hObject = CreateThread(NULL,0,receive_message_thread, &params, 0, NULL);
     printf("Write and press enter to send message to Server");
     do {
-        char buf[100];
-        if (fgets(buf, 100, stdin) != NULL) {
+        char buf[MAX_MESSAGE_SIZE];
+        if (fgets(buf, MAX_MESSAGE_SIZE, stdin) != NULL) {
             printf("sending...");
             send(s,&buf[0],100,0);
         }
@@ -135,32 +150,21 @@ void client(int* stop_flag, int* initialized) {
         return;
     }
 }
+
 void server(SOCKET *connector_list, int* stop_flag, int* server_initialized, int* connectedAmount) {
     SOCKET s = INVALID_SOCKET;
     int connectors = 0;
     HANDLE connector_threads[MAX_CONNECTORS];
     receive_message_Params parameters[MAX_CONNECTORS];
     printf("you started a server\n");
-    if ((s = socket(AF_INET , SOCK_STREAM, 0)) == INVALID_SOCKET) {
-        printf("Could not create socket : %d", WSAGetLastError());
-        return;
-    }
+    ASSERT(!((s = socket(AF_INET , SOCK_STREAM, 0))  == INVALID_SOCKET), "COuld not create socket :%d", WSAGetLastError());
     struct sockaddr_in service;
     service.sin_family = AF_INET;
     service.sin_addr.s_addr = inet_addr("192.168.1.245");
     service.sin_port = htons(8008);
-    if (bind(s , (SOCKADDR *) &service , sizeof(service) ) != 0) {
-        printf("Could not bind socket : %d", WSAGetLastError());
-        closesocket(s);
-        return;
-    } else {
-        printf("Bind success!!!\n");
-    }
-
-    if (listen(s, SOMAXCONN) != 0) {
-        printf("Could not listen to incoming connections : %d", WSAGetLastError());
-        return;
-    }
+    // BIND SOCKET AND SET TO LISTEN MODE
+    ASSERT(!(bind(s, (SOCKADDR *) &service, sizeof(service))), "Could not bind socket : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
+    ASSERT(!(listen(s, SOMAXCONN)), "Could not listen to incoming connections : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
     *server_initialized = 1;
     while (connectors < MAX_CONNECTORS && *stop_flag == 0 ) {
         SOCKET client = INVALID_SOCKET;
@@ -193,6 +197,7 @@ void server(SOCKET *connector_list, int* stop_flag, int* server_initialized, int
         return;
     }
 }
+
 DWORD WINAPI connection_handler(LPVOID lpParam) {
     connectionThreadParams* params = (connectionThreadParams*)lpParam;
     if (params->mode == 1) {
@@ -206,10 +211,10 @@ DWORD WINAPI connection_handler(LPVOID lpParam) {
 
 DWORD WINAPI receive_message_thread(LPVOID lpParam) {
     receive_message_Params* params = (receive_message_Params*)lpParam;
-    char recvbuf[512];
+    char recvbuf[MAX_MESSAGE_SIZE];
     int res;
     do {
-        res = recvfrom(params->s, recvbuf, 512,0, NULL, NULL);
+        res = recvfrom(params->s, recvbuf, MAX_MESSAGE_SIZE,0, NULL, NULL);
         if (res > 0) {
             if (params->mode == 0 ){
                 printf("Received : %.*s\n",res, recvbuf);
