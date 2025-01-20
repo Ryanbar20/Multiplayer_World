@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <windows.h>
 #include <time.h>
+#include <string.h>
 #define SDL_MAIN_HANDLED
 #include "SDL2/SDL.h"
 // gcc -o myprogram.exe main.c -lSDL2main -lSDL2 -lws2_32
@@ -13,6 +14,7 @@
 #define CLOSE_SOCK(s) ((closesocket(s) == 0) ? 0 : WSAGetLastError())
 #define MAX_CONNECTORS 10
 #define MAX_MESSAGE_SIZE 512
+#define MSG_DELAY_MILLIS 1000
 /*
                 TODO:
         max msg size
@@ -23,6 +25,8 @@
             x,y
         server should parse that and update the position it knows from that client
         CLient displays
+        Server should have a thread that accepts connections instead of it accepting itself.
+            OR thread that periodically sends message to client about world state.
 
 
 
@@ -32,6 +36,7 @@ void client(int* stop_flag, int* initialized);
 void server(SOCKET *connector_list, int* stop_flag, int* initialized, int* connectedAmount);
 DWORD WINAPI connection_handler(LPVOID lpParam);
 DWORD WINAPI receive_message_thread(LPVOID lpParam);
+int sendPackage(SOCKET* s, char* type, char* size, char* payload);
 
 typedef struct {
     int mode; // 0 for run Client, 1 for run Server
@@ -46,6 +51,21 @@ typedef struct {
     int connector_id; // ignored when used for client_receiver
 
 } receive_message_Params;
+typedef struct {
+    int x, y;
+    // More might come
+} client_state;
+/* Package protocol
+    512 bytes total; 0-1 = type
+    type 0 package : ping, no payload
+    type 1 package : Client-Server, payload = Client State Info
+        payload format: att1:val,att2:val,att3:val, ... ,attn:val
+    type 2 package : Server-Client, payload = World State info (containing all clients)
+        payload format: Client1(att1:val,att2:val, ... ,attn:val)Client2( ... )ClientN( ... )World( ... )
+    type 3 package : UNUSED
+    2-11 = size
+    12-511 = payload
+*/
 
 int main(int argc, char *argv[]) {   
     WSADATA wsaData;
@@ -118,7 +138,6 @@ int main(int argc, char *argv[]) {
 void client(int* stop_flag, int* initialized) {
     SOCKET s = INVALID_SOCKET;
     printf("you started a client\n");
-    
     ASSERT(!((s = socket(AF_INET , SOCK_STREAM, 0))  == INVALID_SOCKET), 
             "Could not create socket :%d", WSAGetLastError());
 
@@ -137,11 +156,10 @@ void client(int* stop_flag, int* initialized) {
     ASSERT(hObject, "Coulnt initialize Receiver : %d", GetLastError());  // NEED close socket ??  
     printf("Write and press enter to send message to Server");
     do {
-        char buf[MAX_MESSAGE_SIZE];
-        if (fgets(buf, MAX_MESSAGE_SIZE, stdin) != NULL) {
-            printf("sending...");
-            send(s,&buf[0],100,0);
-        }
+        // PERIODICALLY SEND MESSAGE CONTAINING CLIENT'S stated
+        // For now sends ping each 10ms
+        sendPackage(&s, "00", "0000000000", "0");
+        Sleep(1000);
     } while ( *stop_flag == 0);
 
     printf("close socket gave: %d", CLOSE_SOCK(s));
@@ -201,6 +219,7 @@ DWORD WINAPI connection_handler(LPVOID lpParam) {
 }
 
 DWORD WINAPI receive_message_thread(LPVOID lpParam) {
+
     receive_message_Params* params = (receive_message_Params*)lpParam;
     char recvbuf[MAX_MESSAGE_SIZE];
     int res;
@@ -210,8 +229,20 @@ DWORD WINAPI receive_message_thread(LPVOID lpParam) {
             if (params->mode == 0 ){
                 printf("Received : %.*s\n",res, recvbuf);
             } else {
-                printf("Received from client %d \t\t : %.*s\n",params->connector_id, res, recvbuf);
+                if (recvbuf[0] == '0' && recvbuf[1] == '0')
+                printf("received ping from client: %d\n", params->connector_id);
             }
         }
     } while (1);
+}
+
+
+
+int sendPackage(SOCKET* s, char* type, char* size, char* payload) {
+    char * package = (char*)malloc((512 + 1 * sizeof(char)));
+    strcpy(package, type);
+    strcat(package, size);
+    strcat(package, payload);
+    send(*s,package,512,0);
+    free(package);
 }
