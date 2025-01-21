@@ -9,7 +9,6 @@
 #pragma comment(lib, "Ws2_32.lib")
 
 
-
 #define ASSERT(_e, ...) if (!(_e)) { fprintf(stderr, __VA_ARGS__); exit(1); }
 #define CLOSE_SOCK(s) ((closesocket(s) == 0) ? 0 : WSAGetLastError())
 #define MAX_CONNECTORS 10
@@ -143,7 +142,7 @@ void client(int* stop_flag, int* initialized) {
 
     struct sockaddr_in service;
     service.sin_family = AF_INET;
-    service.sin_addr.s_addr = inet_addr("192.168.1.245");
+    service.sin_addr.s_addr = inet_addr("192.168.1.9");
     service.sin_port = htons(8008);
 
     ASSERT(!(connect(s, (SOCKADDR *) &service, sizeof(service))), 
