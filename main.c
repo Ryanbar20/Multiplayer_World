@@ -32,13 +32,7 @@
 
 */
 
-DWORD WINAPI server_connection_handler(LPVOID lpParam);
-DWORD WINAPI client_connection_handler(LPVOID lpParam);
-void client(clientThreadParams* params);
-void server(serverThreadParams* params);
-DWORD WINAPI receive_message_thread(LPVOID lpParam);
-int sendPackage(SOCKET* s, char* type, char* size, char* payload);
-
+                //  structs         //
 typedef struct {
     SOCKET* connector_list; // list of all connected sockets
     int* stop_flag; // 1 if stop
@@ -61,6 +55,16 @@ typedef struct {
     int x, y;
     // More might come
 } client_state;
+
+                //  functions       //
+DWORD WINAPI server_connection_handler(LPVOID lpParam);
+DWORD WINAPI client_connection_handler(LPVOID lpParam);
+void client(clientThreadParams* params);
+void server(serverThreadParams* params);
+DWORD WINAPI receive_message_thread(LPVOID lpParam);
+int sendPackage(SOCKET* s, char* type, char* size, char* payload);
+
+
 /* Package protocol
     512 bytes total; 0-1 = type
     type 0 package : ping, no payload
