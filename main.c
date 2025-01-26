@@ -32,9 +32,10 @@
 
 */
 
+DWORD WINAPI server_connection_handler(LPVOID lpParam);
+DWORD WINAPI client_connection_handler(LPVOID lpParam);
 void client(int* stop_flag, int* initialized);
 void server(SOCKET *connector_list, int* stop_flag, int* initialized, int* connectedAmount);
-DWORD WINAPI connection_handler(LPVOID lpParam);
 DWORD WINAPI receive_message_thread(LPVOID lpParam);
 int sendPackage(SOCKET* s, char* type, char* size, char* payload);
 
@@ -45,6 +46,19 @@ typedef struct {
     int* initialized; //1 if server/client is done with initializing
     int* connected; //ignored for client
 } connectionThreadParams;
+
+typedef struct {
+    SOCKET* connector_list;
+    int* stop_flag;
+    int* initialized;
+    int*connected;
+} serverThreadParams;
+
+typedef struct {
+    int* stop_flag;
+    int* initialized;
+} clientThreadParams;
+
 typedef struct {
     int mode; // 0 for Client receiver, 1 for Server recevier
     SOCKET s;
@@ -77,10 +91,10 @@ int main(int argc, char *argv[]) {
         int stop_flag = 0;
         int server_initialized = 0;
         int connected = 0;
-        connectionThreadParams params = {1, &connectors[0], &stop_flag, &server_initialized, &connected};
+        serverThreadParams params = {&connectors[0], &stop_flag, &server_initialized, &connected};
         HANDLE hThread = CreateThread(
             NULL, 0,
-            connection_handler,
+            server_connection_handler,
             &params,
             0, NULL
         );
@@ -109,10 +123,10 @@ int main(int argc, char *argv[]) {
     } else {                                //CLIENT MODE
         int client_initialized = 0;
         int stop_flag = 0;
-        connectionThreadParams params = {0,NULL, &stop_flag, &client_initialized, NULL};
+        clientThreadParams params = {&stop_flag, &client_initialized};
         HANDLE hThread = CreateThread(
             NULL, 0,
-            connection_handler,
+            client_connection_handler,
             &params,
             0, NULL
         );
@@ -207,16 +221,17 @@ void server(SOCKET *connector_list, int* stop_flag, int* server_initialized, int
     printf("close socket gave: %d", CLOSE_SOCK(s));
 }
 
-DWORD WINAPI connection_handler(LPVOID lpParam) {
-    connectionThreadParams* params = (connectionThreadParams*)lpParam;
-    if (params->mode == 1) {
-        //SERVER MODE
-        server(params->connector_list, params->stop_flag, params->initialized, params->connected);
-    } else {
-        //CLIENT MODE
-        client(params->stop_flag, params->initialized);
-    }
+DWORD WINAPI server_connection_handler(LPVOID lpParam) {
+    serverThreadParams* params = (serverThreadParams*)lpParam;
+    server(params->connector_list, params->stop_flag, params->initialized, params->connected);
+    
 }
+
+DWORD WINAPI client_connection_handler(LPVOID lpParam) {
+    clientThreadParams* params = (clientThreadParams*)lpParam;
+    client(params->stop_flag, params->initialized);
+}
+
 
 DWORD WINAPI receive_message_thread(LPVOID lpParam) {
 
