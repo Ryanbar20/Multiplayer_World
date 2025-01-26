@@ -79,7 +79,8 @@ int main(int argc, char *argv[]) {
     } else {                                //CLIENT MODE
         int client_initialized = 0;
         int stop_flag = 0;
-        clientThreadParams params = {&stop_flag, &client_initialized};
+        client_state state = {0, 0};
+        clientThreadParams params = {&stop_flag, &client_initialized, &state};
         HANDLE hThread = CreateThread(
             NULL, 0,
             client_connection_handler,
@@ -90,12 +91,25 @@ int main(int argc, char *argv[]) {
         char input[100];
         while (client_initialized ==0) {;}
         while (stop_flag == 0) {
-            // printf("Enter q to stop client\n");
-            // if (fgets(input, sizeof(input), stdin) != NULL) {
-            //     if (input[0] == 'q' && input[1] == '\n') {
-            //         stop_flag = 1;
-            //     }
-            // }
+            printf("Enter q to stop client\n");
+            if (fgets(input, sizeof(input), stdin) != NULL) {
+                if (input[0] == 'q' && input[1] == '\n') {
+                    stop_flag = 1;
+                    break;
+                // movement inbetween -10 <= x <= 10 and -10 <= y <= 10
+                } else if (input[0] == 'w' && input[1] == '\n' && state.y != 10) {
+                    state.y += 1;
+                } else if (input[0] == 'a' && input[1] == '\n' && state.x != -10) {
+                    state.x -= 1;
+                } else if (input[0] == 's' && input[1] == '\n' && state.y != -10) {
+                    state.y -= 1;
+                } else if (input[0] == 'd' && input[1] == '\n' && state.x != 10) {
+                    state.x += 1;
+                } else {
+                    continue;
+                }
+                printf("%d, %d = current state", state.x, state.y);
+            }
         }
         
         WaitForSingleObject(hThread, INFINITE);
@@ -108,6 +122,7 @@ int main(int argc, char *argv[]) {
 void client(clientThreadParams* params) {
     SOCKET s = INVALID_SOCKET;
     printf("you started a client\n");
+    client_state last_state = {(params->state->x), (params->state->y)};
     ASSERT(!((s = socket(AF_INET , SOCK_STREAM, 0))  == INVALID_SOCKET), 
             "Could not create socket :%d", WSAGetLastError());
 
@@ -126,9 +141,20 @@ void client(clientThreadParams* params) {
     ASSERT(hObject, "Coulnt initialize Receiver : %d", GetLastError());  // NEED close socket ??  
     printf("Write and press enter to send message to Server");
     do {
-        // PERIODICALLY SEND MESSAGE CONTAINING CLIENT'S stated
-        // For now sends ping each 10ms
-        sendPackage(&s, "00", "0000000000", "0");
+        if (last_state.x != params->state->x || last_state.y != params->state->y) {
+            // send data to server
+            last_state.x = params->state->x; // maybe paralellism issue
+            last_state.y = params->state->y; // maybe paralellism issue
+            char x[4] = "000";
+            char y[4] = "000";
+            char tot[7] = "000000";
+            snprintf(x,sizeof(x),"%03d", last_state.x);
+            snprintf(y,sizeof(y), "%03d", last_state.y);
+            snprintf(tot, sizeof(tot), "%s%s", x, y);
+            sendPackage(&s, "01", "0000000006", tot);
+        } else { // send ping
+            sendPackage(&s, "00", "0000000000", "0");
+        }
         Sleep(1000);
     } while ( *(params->stop_flag) == 0);
 
@@ -197,10 +223,14 @@ DWORD WINAPI receive_message_thread(LPVOID lpParam) {
         res = recvfrom(params->s, recvbuf, MAX_MESSAGE_SIZE,0, NULL, NULL);
         if (res > 0) {
             if (params->mode == 0 ){
-                printf("Received : %.*s\n",res, recvbuf);
+                //printf("Received : %.*s\n",res, recvbuf);
             } else {
-                if (recvbuf[0] == '0' && recvbuf[1] == '0')
-                printf("received ping from client: %d\n", params->connector_id);
+                if (recvbuf[0] == '0' && recvbuf[1] == '0') {
+                    //printf("received ping from client: %d\n", params->connector_id);
+                } else if (recvbuf[0] == '0' && recvbuf[1] == '1') {
+                    // print update
+                    //TODO ...................................................................................
+                }
             }
         }
     } while (1);

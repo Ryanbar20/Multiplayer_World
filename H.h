@@ -9,6 +9,12 @@
 #define MSG_DELAY_MILLIS 1000
 
 
+// game typedefs
+typedef struct {
+    int x; // More might come
+    int y;
+} client_state;
+
 // networking typedefs
 typedef struct {
     SOCKET* connector_list; // list of all connected sockets
@@ -20,6 +26,7 @@ typedef struct {
 typedef struct {
     int* stop_flag; // 1 if stop
     int* initialized; // 1 if initialized
+    client_state* state;
 } clientThreadParams;
 
 typedef struct {
@@ -29,11 +36,6 @@ typedef struct {
 
 } receive_message_Params;
 
-// game typedefs
-typedef struct {
-    int x, y;
-    // More might come
-} client_state;
 
 
 
