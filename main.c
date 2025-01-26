@@ -34,29 +34,21 @@
 
 DWORD WINAPI server_connection_handler(LPVOID lpParam);
 DWORD WINAPI client_connection_handler(LPVOID lpParam);
-void client(int* stop_flag, int* initialized);
-void server(SOCKET *connector_list, int* stop_flag, int* initialized, int* connectedAmount);
+void client(clientThreadParams* params);
+void server(serverThreadParams* params);
 DWORD WINAPI receive_message_thread(LPVOID lpParam);
 int sendPackage(SOCKET* s, char* type, char* size, char* payload);
 
 typedef struct {
-    int mode; // 0 for run Client, 1 for run Server
-    SOCKET* connector_list; // ignored for Client
-    int* stop_flag; 
-    int* initialized; //1 if server/client is done with initializing
-    int* connected; //ignored for client
-} connectionThreadParams;
-
-typedef struct {
-    SOCKET* connector_list;
-    int* stop_flag;
-    int* initialized;
-    int*connected;
+    SOCKET* connector_list; // list of all connected sockets
+    int* stop_flag; // 1 if stop
+    int* initialized; // 1 if done initializing
+    int*connected; // amount of connected sockets
 } serverThreadParams;
 
 typedef struct {
-    int* stop_flag;
-    int* initialized;
+    int* stop_flag; // 1 if stop
+    int* initialized; // 1 if initialized
 } clientThreadParams;
 
 typedef struct {
@@ -149,7 +141,7 @@ int main(int argc, char *argv[]) {
     SDL_Quit();
 }
 
-void client(int* stop_flag, int* initialized) {
+void client(clientThreadParams* params) {
     SOCKET s = INVALID_SOCKET;
     printf("you started a client\n");
     ASSERT(!((s = socket(AF_INET , SOCK_STREAM, 0))  == INVALID_SOCKET), 
@@ -163,10 +155,10 @@ void client(int* stop_flag, int* initialized) {
     ASSERT(!(connect(s, (SOCKADDR *) &service, sizeof(service))), 
                 "Could not connect to server : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s) );
     
-    *initialized = 1;
+    *(params->initialized) = 1;
     // start receive thread here
-    receive_message_Params params = {0,s,0};
-    HANDLE hObject = CreateThread(NULL,0,receive_message_thread, &params, 0, NULL);
+    receive_message_Params receive_params = {0,s,0};
+    HANDLE hObject = CreateThread(NULL,0,receive_message_thread, &receive_params, 0, NULL);
     ASSERT(hObject, "Coulnt initialize Receiver : %d", GetLastError());  // NEED close socket ??  
     printf("Write and press enter to send message to Server");
     do {
@@ -174,12 +166,12 @@ void client(int* stop_flag, int* initialized) {
         // For now sends ping each 10ms
         sendPackage(&s, "00", "0000000000", "0");
         Sleep(1000);
-    } while ( *stop_flag == 0);
+    } while ( *(params->stop_flag) == 0);
 
     printf("close socket gave: %d", CLOSE_SOCK(s));
 }
 
-void server(SOCKET *connector_list, int* stop_flag, int* server_initialized, int* connectedAmount) {
+void server(serverThreadParams* params) {
     SOCKET s = INVALID_SOCKET;
     int connectors = 0;
     HANDLE connector_threads[MAX_CONNECTORS];
@@ -196,26 +188,26 @@ void server(SOCKET *connector_list, int* stop_flag, int* server_initialized, int
             "Could not bind socket : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
     ASSERT(!(listen(s, SOMAXCONN)), 
             "Could not listen to incoming connections : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
-    *server_initialized = 1;
-    while (connectors < MAX_CONNECTORS && *stop_flag == 0 ) {
+    *(params->initialized) = 1;
+    while (connectors < MAX_CONNECTORS && *(params->stop_flag) == 0 ) {
         SOCKET client = INVALID_SOCKET;
         ASSERT((client = accept(s, NULL, NULL)) != INVALID_SOCKET, 
                 "Could not accept connection : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
         
         printf("Client Connected");
-        *(connector_list + connectors) = client;
+        *(params->connector_list + connectors) = client;
         connectors++;
-        *connectedAmount = *connectedAmount + 1;
+        *(params->connected) = *(params->connected) + 1;
         //start receiver for this client
-        receive_message_Params params = {1,client, *connectedAmount};
-        parameters[*connectedAmount-1] = params;
-        HANDLE hObject = CreateThread(NULL,0,receive_message_thread, &parameters[*connectedAmount-1], 0, NULL);
+        receive_message_Params receive_params = {1,client, *(params->connected)};
+        parameters[*(params->connected)-1] = receive_params;
+        HANDLE hObject = CreateThread(NULL,0,receive_message_thread, &parameters[*(params->connected)-1], 0, NULL);
         ASSERT(hObject, "Coulnt initialize Receiver : %d", GetLastError()); // need close socket ??   
-        connector_threads[*connectedAmount-1] = hObject;
+        connector_threads[*(params->connected)-1] = hObject;
         char msg[] = "HELLO FROM SERVER";
         send(client, &msg[0], sizeof(msg) / sizeof(msg[0]), 0);
     }
-    while (*stop_flag == 0) {
+    while (*params->stop_flag == 0) {
         continue;
     }
     printf("close socket gave: %d", CLOSE_SOCK(s));
@@ -223,13 +215,13 @@ void server(SOCKET *connector_list, int* stop_flag, int* server_initialized, int
 
 DWORD WINAPI server_connection_handler(LPVOID lpParam) {
     serverThreadParams* params = (serverThreadParams*)lpParam;
-    server(params->connector_list, params->stop_flag, params->initialized, params->connected);
+    server(params);
     
 }
 
 DWORD WINAPI client_connection_handler(LPVOID lpParam) {
     clientThreadParams* params = (clientThreadParams*)lpParam;
-    client(params->stop_flag, params->initialized);
+    client(params);
 }
 
 
