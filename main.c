@@ -1,20 +1,12 @@
 #include <winsock2.h>
 #include <stdio.h>
-#include <windows.h>
 #include <time.h>
 #include <string.h>
 #define SDL_MAIN_HANDLED
 #include "SDL2/SDL.h"
+#include "H.h"
 // gcc -o myprogram.exe main.c -lSDL2main -lSDL2 -lws2_32
 #pragma comment(lib, "Ws2_32.lib")
-
-
-
-#define ASSERT(_e, ...) if (!(_e)) { fprintf(stderr, __VA_ARGS__); exit(1); }
-#define CLOSE_SOCK(s) ((closesocket(s) == 0) ? 0 : WSAGetLastError())
-#define MAX_CONNECTORS 10
-#define MAX_MESSAGE_SIZE 512
-#define MSG_DELAY_MILLIS 1000
 /*
                 TODO:
         max msg size
@@ -31,38 +23,6 @@
 
 
 */
-
-                //  structs         //
-typedef struct {
-    SOCKET* connector_list; // list of all connected sockets
-    int* stop_flag; // 1 if stop
-    int* initialized; // 1 if done initializing
-    int*connected; // amount of connected sockets
-} serverThreadParams;
-
-typedef struct {
-    int* stop_flag; // 1 if stop
-    int* initialized; // 1 if initialized
-} clientThreadParams;
-
-typedef struct {
-    int mode; // 0 for Client receiver, 1 for Server recevier
-    SOCKET s;
-    int connector_id; // ignored when used for client_receiver
-
-} receive_message_Params;
-typedef struct {
-    int x, y;
-    // More might come
-} client_state;
-
-                //  functions       //
-DWORD WINAPI server_connection_handler(LPVOID lpParam);
-DWORD WINAPI client_connection_handler(LPVOID lpParam);
-void client(clientThreadParams* params);
-void server(serverThreadParams* params);
-DWORD WINAPI receive_message_thread(LPVOID lpParam);
-int sendPackage(SOCKET* s, char* type, char* size, char* payload);
 
 
 /* Package protocol
@@ -228,7 +188,6 @@ DWORD WINAPI client_connection_handler(LPVOID lpParam) {
     client(params);
 }
 
-
 DWORD WINAPI receive_message_thread(LPVOID lpParam) {
 
     receive_message_Params* params = (receive_message_Params*)lpParam;
@@ -246,8 +205,6 @@ DWORD WINAPI receive_message_thread(LPVOID lpParam) {
         }
     } while (1);
 }
-
-
 
 int sendPackage(SOCKET* s, char* type, char* size, char* payload) {
     char * package = (char*)malloc((512 + 1 * sizeof(char)));
