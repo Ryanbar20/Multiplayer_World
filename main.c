@@ -128,7 +128,7 @@ void client(clientThreadParams* params) {
 
     struct sockaddr_in service;
     service.sin_family = AF_INET;
-    service.sin_addr.s_addr = inet_addr("192.168.1.245");
+    service.sin_addr.s_addr = inet_addr("192.168.1.9");
     service.sin_port = htons(8008);
 
     ASSERT(!(connect(s, (SOCKADDR *) &service, sizeof(service))), 
