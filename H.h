@@ -30,13 +30,13 @@ typedef struct {
 } clientThreadParams;
 
 typedef struct {
-    int mode; // 0 for Client receiver, 1 for Server recevier
     SOCKET s;
-    int connector_id; // ignored when used for client_receiver
+    int connector_id; // id of client that is listened to
+} server_receiver_Params;
 
-} receive_message_Params;
-
-
+typedef struct {
+    SOCKET s;
+} client_receiver_Params;
 
 
 //function declarations
@@ -44,7 +44,7 @@ DWORD WINAPI server_connection_handler(LPVOID lpParam);
 DWORD WINAPI client_connection_handler(LPVOID lpParam);
 void client(clientThreadParams* params);
 void server(serverThreadParams* params);
-DWORD WINAPI receive_message_thread(LPVOID lpParam);
 int sendPackage(SOCKET* s, char* type, char* size, char* payload);
-
+DWORD WINAPI server_receive_thread(LPVOID lpParam);
+DWORD WINAPI client_receive_thread(LPVOID lpParam);
 #endif

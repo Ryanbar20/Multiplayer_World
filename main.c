@@ -128,7 +128,7 @@ void client(clientThreadParams* params) {
 
     struct sockaddr_in service;
     service.sin_family = AF_INET;
-    service.sin_addr.s_addr = inet_addr("192.168.1.9");
+    service.sin_addr.s_addr = inet_addr("192.168.1.245");
     service.sin_port = htons(8008);
 
     ASSERT(!(connect(s, (SOCKADDR *) &service, sizeof(service))), 
@@ -136,8 +136,8 @@ void client(clientThreadParams* params) {
     
     *(params->initialized) = 1;
     // start receive thread here
-    receive_message_Params receive_params = {0,s,0};
-    HANDLE hObject = CreateThread(NULL,0,receive_message_thread, &receive_params, 0, NULL);
+    client_receiver_Params receive_params = {s};
+    HANDLE hObject = CreateThread(NULL,0,client_receive_thread, &receive_params, 0, NULL);
     ASSERT(hObject, "Coulnt initialize Receiver : %d", GetLastError());  // NEED close socket ??  
     printf("Write and press enter to send message to Server");
     do {
@@ -165,7 +165,7 @@ void server(serverThreadParams* params) {
     SOCKET s = INVALID_SOCKET;
     int connectors = 0;
     HANDLE connector_threads[MAX_CONNECTORS];
-    receive_message_Params parameters[MAX_CONNECTORS];
+    server_receiver_Params parameters[MAX_CONNECTORS];
     printf("you started a server\n");
     ASSERT(!((s = socket(AF_INET , SOCK_STREAM, 0))  == INVALID_SOCKET), 
             "Could not create socket :%d", WSAGetLastError());
@@ -189,9 +189,9 @@ void server(serverThreadParams* params) {
         connectors++;
         *(params->connected) = *(params->connected) + 1;
         //start receiver for this client
-        receive_message_Params receive_params = {1,client, *(params->connected)};
+        server_receiver_Params receive_params = {client, *(params->connected)};
         parameters[*(params->connected)-1] = receive_params;
-        HANDLE hObject = CreateThread(NULL,0,receive_message_thread, &parameters[*(params->connected)-1], 0, NULL);
+        HANDLE hObject = CreateThread(NULL,0,server_receive_thread, &parameters[*(params->connected)-1], 0, NULL);
         ASSERT(hObject, "Coulnt initialize Receiver : %d", GetLastError()); // need close socket ??   
         connector_threads[*(params->connected)-1] = hObject;
         char msg[] = "HELLO FROM SERVER";
@@ -214,24 +214,38 @@ DWORD WINAPI client_connection_handler(LPVOID lpParam) {
     client(params);
 }
 
-DWORD WINAPI receive_message_thread(LPVOID lpParam) {
-
-    receive_message_Params* params = (receive_message_Params*)lpParam;
+DWORD WINAPI server_receive_thread(LPVOID lpParam) {
+    server_receiver_Params* params = (server_receiver_Params*)lpParam;
     char recvbuf[MAX_MESSAGE_SIZE];
     int res;
     do {
         res = recvfrom(params->s, recvbuf, MAX_MESSAGE_SIZE,0, NULL, NULL);
-        if (res > 0) {
-            if (params->mode == 0 ){
-                //printf("Received : %.*s\n",res, recvbuf);
-            } else {
-                if (recvbuf[0] == '0' && recvbuf[1] == '0') {
-                    //printf("received ping from client: %d\n", params->connector_id);
-                } else if (recvbuf[0] == '0' && recvbuf[1] == '1') {
-                    // print update
-                    //TODO ...................................................................................
-                }
-            }
+        if (res > 0 && res <=MAX_MESSAGE_SIZE) {
+            if (recvbuf[0] == '0' && recvbuf[1] == '0') {
+                        printf("received ping from client: %d\n", params->connector_id);
+                    } else if (recvbuf[0] == '0' && recvbuf[1] == '1') {
+                        printf("%s", recvbuf);
+                        //TODO ...................................................................................
+                    }
+        } else if (res == 0) {
+            // handle connection close
+        } else {
+            // handle error in connection
+        }
+    } while (1);
+}
+DWORD WINAPI client_receive_thread(LPVOID lpParam) {
+    client_receiver_Params* params = (client_receiver_Params*)lpParam;
+    char recvbuf[MAX_MESSAGE_SIZE];
+    int res;
+    do {
+        res = recvfrom(params->s, recvbuf, MAX_MESSAGE_SIZE,0,NULL,NULL);
+        if (res > 0 && res <= MAX_MESSAGE_SIZE) {
+            printf("Received : %.*s", res, recvbuf);
+        } else if (res == 0) {
+            // handle connection close
+        } else {
+            // handle error in receiver
         }
     } while (1);
 }
