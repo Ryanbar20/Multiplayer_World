@@ -7,7 +7,9 @@
 #define MAX_CONNECTORS 10
 #define MAX_MESSAGE_SIZE 512
 #define MSG_DELAY_MILLIS 1000
-
+#define TYPE_FIELD_CHARS 2
+#define LENGTH_FIELD_CHARS 10
+#define PAYLOAD_CHARS 500
 
 // game typedefs
 typedef struct {
@@ -15,6 +17,10 @@ typedef struct {
     int y;
 } client_state;
 
+typedef struct {
+    client_state clients[MAX_CONNECTORS];
+    // maybe some params for world state
+} world_state;
 // networking typedefs
 typedef struct {
     SOCKET* connector_list; // list of all connected sockets
@@ -23,10 +29,11 @@ typedef struct {
     int*connected; // amount of connected sockets
 } serverThreadParams;
 
-typedef struct {
+typedef struct clientThreadparams {
     int* stop_flag; // 1 if stop
     int* initialized; // 1 if initialized
     client_state* state;
+    world_state* world;
 } clientThreadParams;
 
 typedef struct {
@@ -36,6 +43,7 @@ typedef struct {
 
 typedef struct {
     SOCKET s;
+    world_state* world;
 } client_receiver_Params;
 
 
