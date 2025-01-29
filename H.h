@@ -10,7 +10,8 @@
 #define TYPE_FIELD_CHARS 2
 #define LENGTH_FIELD_CHARS 10
 #define PAYLOAD_CHARS 500
-
+#define HEIGHT_WINDOW 1000
+#define WIDTH_WINDOW 1000
 // game typedefs
 typedef struct {
     int x; // More might come

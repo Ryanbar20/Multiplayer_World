@@ -9,16 +9,14 @@
 #pragma comment(lib, "Ws2_32.lib")
 /*
                 TODO:
-        max msg size
+DONE    max msg size
         server should send message:
             x,y p1 ; x,y p2 ; x,y p3
         client should parse that and update positions of all clients in their game
-        client should send message:
+DONE    client should send message:
             x,y
         server should parse that and update the position it knows from that client
         CLient displays
-        Server should have a thread that accepts connections instead of it accepting itself.
-            OR thread that periodically sends message to client about world state.
 
 
 
@@ -39,14 +37,32 @@
 
 int main(int argc, char *argv[]) {   
     WSADATA wsaData;
+    printf("initializing winsock and SDL");
     ASSERT(!SDL_Init( SDL_INIT_EVERYTHING ), "Could not initialize SDL : %s", SDL_GetError());
-    printf("\nInitialising Winsock...\n");
+    SDL_Window* window = SDL_CreateWindow("SDL Window",
+                                            SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 
+                                            WIDTH_WINDOW, HEIGHT_WINDOW, SDL_WINDOW_SHOWN
+                                        );
+    ASSERT(window != NULL, "Could not create window: %s", SDL_GetError());
+
+
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    if (renderer == NULL) {
+        printf("SDL_CreateRenderer Error: %s\n", SDL_GetError());
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+
     ASSERT(!WSAStartup(MAKEWORD(2,2), &wsaData), "Failed. Error Code : %d",WSAGetLastError());
+
+
+
     if (argc > 1 && argv[1][0] == 's') {    // SERVER MODE
+
+        //setup & start server
         SOCKET connectors[MAX_CONNECTORS];
-        int stop_flag = 0;
-        int server_initialized = 0;
-        int connected = 0;
+        int stop_flag = 0, server_initialized =0, connected = 0;
         serverThreadParams params = {&connectors[0], &stop_flag, &server_initialized, &connected};
         HANDLE hThread = CreateThread(
             NULL, 0,
@@ -55,8 +71,11 @@ int main(int argc, char *argv[]) {
             0, NULL
         );
         ASSERT(hThread, "Coulnt initialize Server : %d", GetLastError());
-        char input[100];
+        // wait for server initialization
         while(server_initialized == 0) {;}
+
+        // main thread server loop
+        char input[100];
         while (stop_flag == 0) {
             printf("Enter q to stop server, s to send messages\n");
             if (fgets(input, sizeof(input), stdin) != NULL) {
@@ -77,6 +96,7 @@ int main(int argc, char *argv[]) {
         //server.accept() blocks the thread...
         //WaitForSingleObject(hThread, INFINITE);
     } else {                                //CLIENT MODE
+        // set up client                            
         int client_initialized = 0;
         int stop_flag = 0;
         client_state state = {0, 0};
@@ -88,35 +108,58 @@ int main(int argc, char *argv[]) {
             &params,
             0, NULL
         );
+        //wait for initialization
         ASSERT(hThread, "Coulnt initialize Client : %d", GetLastError());
-        char input[100];
         while (client_initialized ==0) {;}
+
+        // main Client loop
+        SDL_Event e;
+        char input[100];
         while (stop_flag == 0) {
-            // do SDL stuff here
-            printf("Enter q to stop client\n");
-            if (fgets(input, sizeof(input), stdin) != NULL) {
-                if (input[0] == 'q' && input[1] == '\n') {
+            while (SDL_PollEvent(&e) != 0) {
+                if (e.type == SDL_QUIT) {
                     stop_flag = 1;
-                    break;
-                // movement inbetween -10 <= x <= 10 and -10 <= y <= 10
-                } else if (input[0] == 'w' && input[1] == '\n' && state.y != 10) {
-                    state.y += 1;
-                } else if (input[0] == 'a' && input[1] == '\n' && state.x != -10) {
-                    state.x -= 1;
-                } else if (input[0] == 's' && input[1] == '\n' && state.y != -10) {
-                    state.y -= 1;
-                } else if (input[0] == 'd' && input[1] == '\n' && state.x != 10) {
-                    state.x += 1;
-                } else {
-                    continue;
                 }
-                printf("%d, %d = current state", state.x, state.y);
+                else if (e.type == SDL_KEYDOWN) {
+                    switch (e.key.keysym.sym)
+                    {
+                    case SDLK_ESCAPE:
+                        stop_flag = 1;
+                        break;
+                    case SDLK_w:
+                        if (state.y != 10) {state.y +=1;}
+                        break;
+                    case SDLK_a:
+                        if (state.x != -10) {state.x -=1;}
+                        break;
+                    case SDLK_s:
+                        if (state.y != -10) {state.y -=1;}
+                        break;
+                    case SDLK_d:
+                        if (state.x != 10) {state.x +=1;}
+                        break;
+                    default:
+                        break;
+                    }
+                    printf("%d, %d = current state\n", state.x, state.y);
+                }
             }
+
+            SDL_SetRenderDrawColor(renderer,0,0,0,255);
+            SDL_RenderClear(renderer);
+            SDL_Rect player = {0.5 * WIDTH_WINDOW + (state.x * 50), 0.5 * HEIGHT_WINDOW + (state.y * 50), 10, 10};
+            printf("player: %d %d \n", player.x, player.y);
+            SDL_SetRenderDrawColor(renderer, 255,0,0,255);
+            SDL_RenderFillRect(renderer, &player);
+            SDL_RenderPresent(renderer);
         }
         
-        WaitForSingleObject(hThread, INFINITE);
+        TerminateThread(hThread, 100);
     }
-    
+
+
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
     WSACleanup();
     SDL_Quit();
 }
@@ -166,20 +209,15 @@ void client(clientThreadParams* params) {
 void server(serverThreadParams* params) {
     SOCKET s = INVALID_SOCKET;
     int connectors = 0;
-    HANDLE connector_threads[MAX_CONNECTORS];
-    server_receiver_Params parameters[MAX_CONNECTORS];
-    printf("you started a server\n");
+    HANDLE connector_threads[MAX_CONNECTORS]; server_receiver_Params parameters[MAX_CONNECTORS];
     ASSERT(!((s = socket(AF_INET , SOCK_STREAM, 0))  == INVALID_SOCKET), 
             "Could not create socket :%d", WSAGetLastError());
-    struct sockaddr_in service;
-    service.sin_family = AF_INET;
-    service.sin_addr.s_addr = inet_addr("192.168.1.245");
-    service.sin_port = htons(8008);
-    // BIND SOCKET AND SET TO LISTEN MODE
+    struct sockaddr_in service = { .sin_family = AF_INET, .sin_addr.s_addr = inet_addr("192.168.1.245"), .sin_port = htons(8008)};
     ASSERT(!(bind(s, (SOCKADDR *) &service, sizeof(service))), 
             "Could not bind socket : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
     ASSERT(!(listen(s, SOMAXCONN)), 
             "Could not listen to incoming connections : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
+
     *(params->initialized) = 1;
     while (connectors < MAX_CONNECTORS && *(params->stop_flag) == 0 ) {
         SOCKET client = INVALID_SOCKET;
@@ -207,61 +245,74 @@ void server(serverThreadParams* params) {
 
 DWORD WINAPI server_receive_thread(LPVOID lpParam) {
     server_receiver_Params* params = (server_receiver_Params*)lpParam;
-    char recvbuf[MAX_MESSAGE_SIZE];
+    char receive_buffer[MAX_MESSAGE_SIZE];
     int res;
     do {
-        res = recvfrom(params->s, recvbuf, MAX_MESSAGE_SIZE,0, NULL, NULL);
+        res = recvfrom(params->s, receive_buffer, MAX_MESSAGE_SIZE,0, NULL, NULL);
         if (res > 0 && res <=MAX_MESSAGE_SIZE) {
-            if (recvbuf[0] == '0' && recvbuf[1] == '0') {
-                        printf("received ping from client: %d\n", params->connector_id);
-                    } else if (recvbuf[0] == '0' && recvbuf[1] == '1') {
-                        char dest[MAX_MESSAGE_SIZE];
-                        strncpy(dest, recvbuf + TYPE_FIELD_CHARS, LENGTH_FIELD_CHARS);
-                        dest[LENGTH_FIELD_CHARS] = '\0';
-                        int payload_size = atoi(dest); // got the size of the payload
-                        memset(dest, '\0',MAX_MESSAGE_SIZE);
-                        strncpy(dest, recvbuf + TYPE_FIELD_CHARS + LENGTH_FIELD_CHARS, payload_size);
-                        dest[payload_size] = '\0'; // payload
-                        printf("%s\n", dest);
-                        char x[4];
-                        strncpy(x, dest, 3);
-                        x[3] = '\0';
-                        char y[4];
-                        strncpy(y, dest+3, 3);
-                        y[3] = '\0';
-                        printf("Cient %d, x = %d, y = %d\n", params->connector_id, atoi(x), atoi(y)); // x and y are correct
-                        //TODO ...................................................................................
-                    }
-        } else if (res == 0) {
-            printf("Client %d stopped\n", params->connector_id);
-            return;
-            // handle connection close
-        } else {
-            // handle error in connection
-            printf("Error while reading from client %d\n", params->connector_id);
-            return;
+
+            if (receive_buffer[0] == '0' && receive_buffer[1] == '0') {
+                printf("received ping from client: %d\n", params->connector_id);
+                continue;
+            }
+
+            if (receive_buffer[0] == '0' && receive_buffer[1] == '1') {
+                char dest[MAX_MESSAGE_SIZE];
+                strncpy(dest, receive_buffer + TYPE_FIELD_CHARS, LENGTH_FIELD_CHARS);
+                dest[LENGTH_FIELD_CHARS] = '\0';
+                int payload_size = atoi(dest); // got the size of the payload
+                // memset(dest, '\0',MAX_MESSAGE_SIZE);
+                strncpy(dest, receive_buffer + TYPE_FIELD_CHARS + LENGTH_FIELD_CHARS, payload_size);
+                dest[payload_size] = '\0'; // payload
+                char x[4], y[4];
+                strncpy(x, dest, 3);
+                strncpy(y, dest+3, 3);
+                y[3] = x[3] = '\0';
+                printf("Cient %d, x = %d, y = %d\n", params->connector_id, atoi(x), atoi(y)); // x and y are correct
+                //TODO ...................................................................................
+                continue;
+            }  
+            continue;     
         }
+        if (res == 0) {
+            printf("Client %d stopped\n", params->connector_id);
+            return 0;
+            // handle connection close
+        }
+        // handle error in connection
+        printf("Error while reading from client %d\n", params->connector_id);
+        return 1;
     } while (1);
 }
 DWORD WINAPI client_receive_thread(LPVOID lpParam) {
     client_receiver_Params* params = (client_receiver_Params*)lpParam;
-    char recvbuf[MAX_MESSAGE_SIZE];
-    int res;
+    char receive_buffer[MAX_MESSAGE_SIZE]; int res;
     do {
-        res = recvfrom(params->s, recvbuf, MAX_MESSAGE_SIZE,0,NULL,NULL);
+        res = recvfrom(params->s, receive_buffer, MAX_MESSAGE_SIZE,0,NULL,NULL);
         if (res > 0 && res <= MAX_MESSAGE_SIZE) {
-            printf("Received : %.*s", res, recvbuf);
-        } else if (res == 0) {
+            printf("Received : %.*s", res, receive_buffer);
+            continue;
+        } 
+        if (res == 0) {
             printf("Server closed\n");
-            exit(0);
+            return 0 ;
             //handle conn close
-        } else {
-            // handle error in receiver
-            printf("Error while reading\n");
-            exit(0);
         }
+        // handle error in receiver
+        printf("Error while reading\n");
+        return 1;
     } while (1);
 }
+
+
+
+
+
+
+
+
+
+
 
 int sendPackage(SOCKET* s, char* type, char* size, char* payload) {
     char * package = (char*)malloc((512 + 1 * sizeof(char)));
@@ -271,15 +322,11 @@ int sendPackage(SOCKET* s, char* type, char* size, char* payload) {
     send(*s,package,512,0);
     free(package);
 }
-
-
-
 DWORD WINAPI server_connection_handler(LPVOID lpParam) {
     serverThreadParams* params = (serverThreadParams*)lpParam;
     server(params);
     
 }
-
 DWORD WINAPI client_connection_handler(LPVOID lpParam) {
     clientThreadParams* params = (clientThreadParams*)lpParam;
     client(params);
