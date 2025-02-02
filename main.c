@@ -163,12 +163,12 @@ void mainServerLoop(SDL_Window* window, SDL_Renderer* renderer) {
         SDL_SetRenderDrawColor(renderer,0,0,0,255);
         SDL_RenderClear(renderer);
         for (int i =0; i<MAX_CONNECTORS; i++) {
-            if (world.clients[i].x == INVALID_COORDINATE) { 
+            if (world.clients[i].x == INVALID_COORDINATE && world.clients[i].y == INVALID_COORDINATE) { 
                 continue;
             }
             SDL_Rect player = {0.5 * WIDTH_WINDOW + (world.clients[i].x * CELL_SIZE),
                                 0.5 * HEIGHT_WINDOW + (world.clients[i].y * CELL_SIZE), PLAYER_SIZE, PLAYER_SIZE};
-            SDL_SetRenderDrawColor(renderer, (int) (i * 255 / MAX_CONNECTORS),0,0,255);
+            SDL_SetRenderDrawColor(renderer, 0,255,0,255);
             SDL_RenderFillRect(renderer, &player);
         }
         SDL_RenderPresent(renderer);
