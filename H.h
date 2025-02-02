@@ -12,6 +12,10 @@
 #define PAYLOAD_CHARS 500
 #define HEIGHT_WINDOW 1000
 #define WIDTH_WINDOW 1000
+#define FPS_CAP 60
+#define FRAME_TIME (1000 / FPS_CAP)
+
+
 // game typedefs
 typedef struct {
     int x; // More might come

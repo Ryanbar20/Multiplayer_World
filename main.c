@@ -81,9 +81,10 @@ int main(int argc, char *argv[]) {
         while(server_initialized == 0) {;}
 
         // main thread server loop
-
+        Uint32 frameStart, frameTime;
         SDL_Event e;
         while (stop_flag == 0) {
+            frameStart = SDL_GetTicks();
             while (SDL_PollEvent(&e) != 0) {
                 if (e.type == SDL_QUIT) {
                     stop_flag = 1;
@@ -98,6 +99,12 @@ int main(int argc, char *argv[]) {
                 SDL_RenderFillRect(renderer, &player);
             }
             SDL_RenderPresent(renderer);
+            frameTime = SDL_GetTicks() - frameStart;
+
+            // Delay to cap the FPS
+            if (frameTime < FRAME_TIME) {
+                SDL_Delay(FRAME_TIME - frameTime); // Delay the remaining time to cap FPS
+            }
         }
         
         TerminateThread(hThread, 100);
@@ -121,8 +128,10 @@ int main(int argc, char *argv[]) {
         while (client_initialized ==0) {;}
 
         // main Client loop
+        Uint32 frameStart, frameTime;
         SDL_Event e;
         while (stop_flag == 0) {
+            frameStart = SDL_GetTicks();
             while (SDL_PollEvent(&e) != 0) {
                 if (e.type == SDL_QUIT) {
                     stop_flag = 1;
@@ -159,6 +168,12 @@ int main(int argc, char *argv[]) {
             SDL_SetRenderDrawColor(renderer, 255,0,0,255);
             SDL_RenderFillRect(renderer, &player);
             SDL_RenderPresent(renderer);
+            frameTime = SDL_GetTicks() - frameStart;
+
+            // Delay to cap the FPS
+            if (frameTime < FRAME_TIME) {
+                SDL_Delay(FRAME_TIME - frameTime); // Delay the remaining time to cap FPS
+            }
         }
         
         TerminateThread(hThread, 100);
