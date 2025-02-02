@@ -63,7 +63,13 @@ int main(int argc, char *argv[]) {
         //setup & start server
         SOCKET connectors[MAX_CONNECTORS];
         int stop_flag = 0, server_initialized =0, connected = 0;
-        serverThreadParams params = {&connectors[0], &stop_flag, &server_initialized, &connected};
+        world_state world;
+        for (int i =0; i < MAX_CONNECTORS; i++) {
+            world.clients[i].x = -11;
+            world.clients[i].y = -11;
+        }
+
+        serverThreadParams params = {&connectors[0], &stop_flag, &server_initialized, &connected, &world};
         HANDLE hThread = CreateThread(
             NULL, 0,
             server_connection_handler,
@@ -75,23 +81,25 @@ int main(int argc, char *argv[]) {
         while(server_initialized == 0) {;}
 
         // main thread server loop
-        char input[100];
+
+        SDL_Event e;
         while (stop_flag == 0) {
-            printf("Enter q to stop server, s to send messages\n");
-            if (fgets(input, sizeof(input), stdin) != NULL) {
-                if (input[0] == 'q' && input[1] == '\n') {
+            while (SDL_PollEvent(&e) != 0) {
+                if (e.type == SDL_QUIT) {
                     stop_flag = 1;
-                    break;
-                } else if (input[0] == 's' && input[1] == '\n') {
-                    // BROADCAST A MESSAGE TO ALL SOCKETS HERE
-                    printf("%d\n", connected);
-                    char msg[] = "HELLO FELLOW SOCKET";
-                    for (int i =0; i<connected; i++) {
-                        sendto(connectors[i], &msg[0], sizeof(msg) / sizeof(msg[0]), 0, NULL, 0);
-                    }
                 }
             }
+
+            SDL_SetRenderDrawColor(renderer,0,0,0,255);
+            SDL_RenderClear(renderer);
+            for (int i =0; i<MAX_CONNECTORS; i++) {
+                SDL_Rect player = {0.5 * WIDTH_WINDOW + (world.clients[i].x * 50), 0.5 * HEIGHT_WINDOW + (world.clients[i].y * 50), 10, 10};
+                SDL_SetRenderDrawColor(renderer, (int) i * 255 / MAX_CONNECTORS,0,(int) (MAX_CONNECTORS - i) * 255 / MAX_CONNECTORS,255);
+                SDL_RenderFillRect(renderer, &player);
+            }
+            SDL_RenderPresent(renderer);
         }
+        
         TerminateThread(hThread, 100);
         //server.accept() blocks the thread...
         //WaitForSingleObject(hThread, INFINITE);
@@ -114,7 +122,6 @@ int main(int argc, char *argv[]) {
 
         // main Client loop
         SDL_Event e;
-        char input[100];
         while (stop_flag == 0) {
             while (SDL_PollEvent(&e) != 0) {
                 if (e.type == SDL_QUIT) {
@@ -210,14 +217,16 @@ void server(serverThreadParams* params) {
     SOCKET s = INVALID_SOCKET;
     int connectors = 0;
     HANDLE connector_threads[MAX_CONNECTORS]; server_receiver_Params parameters[MAX_CONNECTORS];
-    ASSERT(!((s = socket(AF_INET , SOCK_STREAM, 0))  == INVALID_SOCKET), 
-            "Could not create socket :%d", WSAGetLastError());
     struct sockaddr_in service = { .sin_family = AF_INET, .sin_addr.s_addr = inet_addr("192.168.1.245"), .sin_port = htons(8008)};
-    ASSERT(!(bind(s, (SOCKADDR *) &service, sizeof(service))), 
-            "Could not bind socket : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
-    ASSERT(!(listen(s, SOMAXCONN)), 
-            "Could not listen to incoming connections : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
+    { // initialization of networking
+        ASSERT(!((s = socket(AF_INET , SOCK_STREAM, 0))  == INVALID_SOCKET), 
+                "Could not create socket :%d", WSAGetLastError());
+        ASSERT(!(bind(s, (SOCKADDR *) &service, sizeof(service))), 
+                "Could not bind socket : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
+        ASSERT(!(listen(s, SOMAXCONN)), 
+                "Could not listen to incoming connections : %d, close socket gave : %d", WSAGetLastError(), CLOSE_SOCK(s));
 
+    }
     *(params->initialized) = 1;
     while (connectors < MAX_CONNECTORS && *(params->stop_flag) == 0 ) {
         SOCKET client = INVALID_SOCKET;
@@ -229,7 +238,7 @@ void server(serverThreadParams* params) {
         connectors++;
         *(params->connected) = *(params->connected) + 1;
         //start receiver for this client
-        server_receiver_Params receive_params = {client, *(params->connected)};
+        server_receiver_Params receive_params = {client, *(params->connected), params->world};
         parameters[*(params->connected)-1] = receive_params;
         HANDLE hObject = CreateThread(NULL,0,server_receive_thread, &parameters[*(params->connected)-1], 0, NULL);
         ASSERT(hObject, "Coulnt initialize Receiver : %d", GetLastError()); // need close socket ??   
@@ -269,7 +278,9 @@ DWORD WINAPI server_receive_thread(LPVOID lpParam) {
                 strncpy(y, dest+3, 3);
                 y[3] = x[3] = '\0';
                 printf("Cient %d, x = %d, y = %d\n", params->connector_id, atoi(x), atoi(y)); // x and y are correct
-                //TODO ...................................................................................
+                
+                params->world->clients[params->connector_id -1].x = atoi(x);
+                params->world->clients[params->connector_id -1].y = atoi(y);
                 continue;
             }  
             continue;     

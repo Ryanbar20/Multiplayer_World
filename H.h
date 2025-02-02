@@ -18,7 +18,7 @@ typedef struct {
     int y;
 } client_state;
 
-typedef struct {
+typedef struct world_state {
     client_state clients[MAX_CONNECTORS];
     // maybe some params for world state
 } world_state;
@@ -28,6 +28,7 @@ typedef struct {
     int* stop_flag; // 1 if stop
     int* initialized; // 1 if done initializing
     int*connected; // amount of connected sockets
+    world_state* world;
 } serverThreadParams;
 
 typedef struct clientThreadparams {
@@ -37,9 +38,10 @@ typedef struct clientThreadparams {
     world_state* world;
 } clientThreadParams;
 
-typedef struct {
+typedef struct server_receiver_Params {
     SOCKET s;
     int connector_id; // id of client that is listened to
+    world_state* world;
 } server_receiver_Params;
 
 typedef struct {
